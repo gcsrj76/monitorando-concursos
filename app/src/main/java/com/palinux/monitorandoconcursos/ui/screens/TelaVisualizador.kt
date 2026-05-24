@@ -3,6 +3,8 @@ package com.palinux.monitorandoconcursos.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,81 +15,46 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.palinux.monitorandoconcursos.ui.components.ItemConcursoCard
 import com.palinux.monitorandoconcursos.ui.viewmodel.ConcursosViewModel
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TelaVisualizadorConcursos(viewModel: ConcursosViewModel = viewModel()) {
     val listaConcursos by viewModel.concursosFiltrados.collectAsState()
     val filtro by viewModel.filtro.collectAsState()
+    val todasUfs by viewModel.todasUfsDisponiveis.collectAsState()
     val estaCarregando by viewModel.estaCarregando.collectAsState()
 
-    // Controle do diálogo do calendário
     var mostrarDatePicker by remember { mutableStateOf(false) }
     val datePickerState = rememberDatePickerState()
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = "Buscador de Concursos",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp // Opcional: Garante um tamanho robusto e amigável
-                    )
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                title = { Text("Buscador de Concursos", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             )
         }
     ) { paddingValues ->
-        Column(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp)) {
-
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp)
+        ) {
+            // Card de Filtros Remodelado
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(text = "Filtros de Pesquisa", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                    OutlinedTextField(
-                        value = filtro.cargoQuery,
-                        onValueChange = { viewModel.atualizarFiltro(filtro.copy(cargoQuery = it)) },
-                        label = { Text("Pesquisar por Cargo ou Instituição") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = filtro.regiao,
-                            onValueChange = { viewModel.atualizarFiltro(filtro.copy(regiao = it)) },
-                            label = { Text("Região/UF") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        OutlinedTextField(
-                            value = filtro.escolaridade,
-                            onValueChange = { viewModel.atualizarFiltro(filtro.copy(escolaridade = it)) },
-                            label = { Text("Escolaridade") },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // --- NOVO CAMPO: SELETOR DE DATA ---
+                    // --- SELETOR DE DATA ---
                     val dataFormatada = filtro.dataInscricaoMinima?.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")) ?: "Qualquer data"
-
                     OutlinedButton(
                         onClick = { mostrarDatePicker = true },
                         modifier = Modifier.fillMaxWidth()
@@ -97,7 +64,6 @@ fun TelaVisualizadorConcursos(viewModel: ConcursosViewModel = viewModel()) {
                         Text(text = "Inscrições posteriores a: $dataFormatada")
                     }
 
-                    // Se o usuário já filtrou por data, mostra a opção de limpar o filtro de data
                     if (filtro.dataInscricaoMinima != null) {
                         TextButton(
                             onClick = { viewModel.atualizarFiltro(filtro.copy(dataInscricaoMinima = null)) },
@@ -107,45 +73,79 @@ fun TelaVisualizadorConcursos(viewModel: ConcursosViewModel = viewModel()) {
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Checkbox(
-                            checked = filtro.apenasComVagasImediatas,
-                            onCheckedChange = { viewModel.atualizarFiltro(filtro.copy(apenasComVagasImediatas = it)) }
+                    // Se existirem UFs localizadas, exibe a seção de chips organizados em linha
+                    if (todasUfs.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Filtrar por Região (Clique para remover da busca):",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(text = "Ocultar Cadastro de Reserva")
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // FlowRow distribui os itens em linha e quebra automaticamente a linha se necessário
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(0.dp),
+                            verticalArrangement = Arrangement.spacedBy(0.dp)
+                        ) {
+                            todasUfs.forEach { uf ->
+                                // Só renderiza a UF se ela NÃO tiver sido removida pelo usuário
+                                if (uf !in filtro.ufsOcultadas) {
+                                    InputChip(
+                                        selected = true,
+                                        onClick = { viewModel.alternarVisibilidadeUf(uf) },
+                                        label = {
+                                            Text(
+                                                text = uf,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        },
+                                        // Customização para se assemelhar ao chip visual do Card
+                                        colors = InputChipDefaults.inputChipColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            labelColor = MaterialTheme.colorScheme.onPrimary
+                                        ) ,
+                                        modifier = Modifier
+                                            .height(24.dp)
+                                            .padding(vertical = 1.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Se houver qualquer UF oculta, exibe um botão discreto para restaurá-las
+                        if (filtro.ufsOcultadas.isNotEmpty()) {
+                            TextButton(
+                                onClick = { viewModel.atualizarFiltro(filtro.copy(ufsOcultadas = emptySet())) },
+                                modifier = Modifier.align(Alignment.Start)
+                            ) {
+                                Text("Restaurar todas as Regiões", fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
             }
 
-            // --- DIÁLOGO DO CALENDÁRIO NATIVO (M3) ---
+            // --- DIÁLOGO DO CALENDÁRIO NATIVO ---
             if (mostrarDatePicker) {
                 DatePickerDialog(
                     onDismissRequest = { mostrarDatePicker = false },
                     confirmButton = {
                         TextButton(onClick = {
                             datePickerState.selectedDateMillis?.let { milissegundos ->
-                                // Converte os milissegundos selecionados no calendário para LocalDate
                                 val dataSelecionada = Instant.ofEpochMilli(milissegundos)
                                     .atZone(ZoneId.systemDefault())
                                     .toLocalDate()
-
                                 viewModel.atualizarFiltro(filtro.copy(dataInscricaoMinima = dataSelecionada))
                             }
                             mostrarDatePicker = false
-                        }) {
-                            Text("Confirmar")
-                        }
+                        }) { Text("Confirmar") }
                     },
                     dismissButton = {
-                        TextButton(onClick = { mostrarDatePicker = false }) {
-                            Text("Cancelar")
-                        }
+                        TextButton(onClick = { mostrarDatePicker = false }) { Text("Cancelar") }
                     }
-                ) {
-                    DatePicker(state = datePickerState)
-                }
+                ) { DatePicker(state = datePickerState) }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

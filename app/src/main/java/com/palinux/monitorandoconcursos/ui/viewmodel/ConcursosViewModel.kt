@@ -9,9 +9,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -29,31 +29,30 @@ class ConcursosViewModel : ViewModel() {
 
     private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
-    // Combina dinamicamente a lista bruta com os critérios de filtro vigentes
+    // Expõe todas as UFs distintas encontradas na raspagem atual para a UI gerar os botões
+    val todasUfsDisponiveis: StateFlow<List<String>> = combine(_todosConcursos) { lista ->
+        lista[0].map { it.regiao }.distinct().sorted()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Combina dinamicamente aplicando os novos critérios simplificados
     val concursosFiltrados: StateFlow<List<Concurso>> = combine(_todosConcursos, _filtro) { lista, criterio ->
         lista.filter { concurso ->
-            val matchesRegiao = criterio.regiao.isEmpty() || concurso.regiao.contains(criterio.regiao, ignoreCase = true)
-            val matchesEscolaridade = criterio.escolaridade.isEmpty() || concurso.escolaridade.contains(criterio.escolaridade, ignoreCase = true)
-            val matchesCargo = criterio.cargoQuery.isEmpty() || concurso.cargos.contains(criterio.cargoQuery, ignoreCase = true) || concurso.instituicao.contains(criterio.cargoQuery, ignoreCase = true)
-            val matchesSalario = concurso.salarioMaximo >= criterio.salarioMinimo
-            val matchesVagas = !criterio.apenasComVagasImediatas || !concurso.isCadastroReserva
+            // Se a UF do concurso estiver no conjunto de ignoradas, ela é filtrada para fora
+            val matchesRegiao = concurso.regiao !in criterio.ufsOcultadas
 
-            // Nova lógica de filtragem por data
             val matchesData = if (criterio.dataInscricaoMinima != null) {
                 val dataConcurso = tentarMapearData(concurso.dataInscricao)
                 if (dataConcurso != null) {
-                    // Verifica se a data do concurso é posterior ou igual à inserida no filtro
                     dataConcurso.isAfter(criterio.dataInscricaoMinima) || dataConcurso.isEqual(criterio.dataInscricaoMinima)
                 } else {
-                    true // Se não conseguirmos ler a data (ex: "Inscrições prorrogadas"), mantemos na lista por segurança
+                    true
                 }
             } else {
                 true
             }
 
-            matchesRegiao && matchesEscolaridade && matchesCargo && matchesSalario && matchesVagas && matchesData
+            matchesRegiao && matchesData
         }.sortedBy { concurso ->
-            // ORDENAÇÃO POR DATA: Concursos com prazos mais próximos aparecem primeiro
             tentarMapearData(concurso.dataInscricao) ?: LocalDate.MAX
         }
     }.stateIn(
@@ -69,7 +68,6 @@ class ConcursosViewModel : ViewModel() {
     fun carregarDados() {
         viewModelScope.launch {
             _estaCarregando.value = true
-            // URL fictícia ou real mapeada
             val resultado = repository.buscarConcursos("https://www.pciconcursos.com.br/concursos/")
             _todosConcursos.value = resultado
             _estaCarregando.value = false
@@ -80,6 +78,18 @@ class ConcursosViewModel : ViewModel() {
         _filtro.value = novoFiltro
     }
 
+    // Função utilitária para alternar o estado de visibilidade de uma UF
+    fun alternarVisibilidadeUf(uf: String) {
+        val ocultadasAtuais = _filtro.value.ufsOcultadas.toMutableSet()
+        if (ocultadasAtuais.contains(uf)) {
+            ocultadasAtuais.remove(uf)
+        } else {
+            ocultadasAtuais.add(uf)
+        }
+        _filtro.value = _filtro.value.copy(ufsOcultadas = ocultadasAtuais)
+    }
+
+
     private fun tentarMapearData(dataStr: String): LocalDate? {
         return try {
             // Remove textos extras se houver e pega apenas a parte da data dd/MM/yyyy
@@ -87,6 +97,19 @@ class ConcursosViewModel : ViewModel() {
             LocalDate.parse(apenasData, dateFormatter)
         } catch (e: DateTimeParseException) {
             null
+        }
+    }
+
+    fun isolarUfEspecifica(ufSelecionada: String) {
+        if (ufSelecionada == "Todas") {
+            // Se escolheu "Todas", limpa o filtro e exibe tudo
+            _filtro.value = _filtro.value.copy(ufsOcultadas = emptySet())
+        } else {
+            // Pega todas as UFs que existem na busca atual, exceto a selecionada
+            val todasUfsExistentes = todasUfsDisponiveis.value
+            val novasOcultadas = todasUfsExistentes.filter { it != ufSelecionada }.toSet()
+
+            _filtro.value = _filtro.value.copy(ufsOcultadas = novasOcultadas)
         }
     }
 }
