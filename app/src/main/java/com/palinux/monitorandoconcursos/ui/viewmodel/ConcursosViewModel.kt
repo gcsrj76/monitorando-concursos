@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.palinux.monitorandoconcursos.data.repository.ConcursoRepository
 import com.palinux.monitorandoconcursos.domain.model.Concurso
 import com.palinux.monitorandoconcursos.domain.model.FiltroPesquisa
+import com.palinux.monitorandoconcursos.domain.model.TipoOrdenacao
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,29 +16,43 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import kotlinx.coroutines.flow.map
 
 class ConcursosViewModel : ViewModel() {
 
     private val repository = ConcursoRepository()
 
     private val _todosConcursos = MutableStateFlow<List<Concurso>>(emptyList())
+
     private val _filtro = MutableStateFlow(FiltroPesquisa())
     val filtro: StateFlow<FiltroPesquisa> = _filtro.asStateFlow()
 
     private val _estaCarregando = MutableStateFlow(false)
     val estaCarregando: StateFlow<Boolean> = _estaCarregando.asStateFlow()
 
+    private val _ordenacaoAtual = MutableStateFlow(TipoOrdenacao.DATA)
+    val ordenacaoAtual: StateFlow<TipoOrdenacao> = _ordenacaoAtual.asStateFlow()
+
     private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
-    // Expõe todas as UFs distintas encontradas na raspagem atual para a UI gerar os botões
-    val todasUfsDisponiveis: StateFlow<List<String>> = combine(_todosConcursos) { lista ->
-        lista[0].map { it.regiao }.distinct().sorted()
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    // CORRIGIDO: Mapeia corretamente a lista inteira de concursos obtendo as UFs únicas
+    val todasUfsDisponiveis: StateFlow<List<String>> = _todosConcursos
+        .map { lista ->
+            lista.map { it.regiao }.distinct().sorted()
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
-    // Combina dinamicamente aplicando os novos critérios simplificados
-    val concursosFiltrados: StateFlow<List<Concurso>> = combine(_todosConcursos, _filtro) { lista, criterio ->
+    // UNIFICADO: Com os tipos explicitados para o compilador não se perder
+    val concursosFiltrados: StateFlow<List<Concurso>> = combine(
+        _todosConcursos,
+        _filtro,
+        _ordenacaoAtual
+    ) { lista: List<Concurso>, criterio: FiltroPesquisa, ordem: TipoOrdenacao -> // <<< TIPOS EXPLICITADOS AQUI
         lista.filter { concurso ->
-            // Se a UF do concurso estiver no conjunto de ignoradas, ela é filtrada para fora
             val matchesRegiao = concurso.regiao !in criterio.ufsOcultadas
 
             val matchesData = if (criterio.dataInscricaoMinima != null) {
@@ -52,8 +67,13 @@ class ConcursosViewModel : ViewModel() {
             }
 
             matchesRegiao && matchesData
-        }.sortedBy { concurso ->
-            tentarMapearData(concurso.dataInscricao) ?: LocalDate.MAX
+        }.let { listaFiltrada ->
+            when (ordem) {
+                TipoOrdenacao.DATA -> listaFiltrada.sortedBy { tentarMapearData(it.dataInscricao) ?: LocalDate.MAX }
+                TipoOrdenacao.VALOR -> listaFiltrada.sortedByDescending { it.salarioMaximo }
+                TipoOrdenacao.VAGAS -> listaFiltrada.sortedByDescending { it.vagas }
+                TipoOrdenacao.UF -> listaFiltrada.sortedBy { it.regiao }
+            }
         }
     }.stateIn(
         scope = viewModelScope,
@@ -78,7 +98,6 @@ class ConcursosViewModel : ViewModel() {
         _filtro.value = novoFiltro
     }
 
-    // Função utilitária para alternar o estado de visibilidade de uma UF
     fun alternarVisibilidadeUf(uf: String) {
         val ocultadasAtuais = _filtro.value.ufsOcultadas.toMutableSet()
         if (ocultadasAtuais.contains(uf)) {
@@ -89,27 +108,26 @@ class ConcursosViewModel : ViewModel() {
         _filtro.value = _filtro.value.copy(ufsOcultadas = ocultadasAtuais)
     }
 
+    fun isolarUfEspecifica(ufSelecionada: String) {
+        if (ufSelecionada == "Todas") {
+            _filtro.value = _filtro.value.copy(ufsOcultadas = emptySet())
+        } else {
+            val todasUfsExistentes = todasUfsDisponiveis.value
+            val novasOcultadas = todasUfsExistentes.filter { it != ufSelecionada }.toSet()
+            _filtro.value = _filtro.value.copy(ufsOcultadas = novasOcultadas)
+        }
+    }
+
+    fun mudarOrdenacao(novaOrdem: TipoOrdenacao) {
+        _ordenacaoAtual.value = novaOrdem
+    }
 
     private fun tentarMapearData(dataStr: String): LocalDate? {
         return try {
-            // Remove textos extras se houver e pega apenas a parte da data dd/MM/yyyy
             val apenasData = dataStr.substringAfterLast(" ").trim()
             LocalDate.parse(apenasData, dateFormatter)
         } catch (e: DateTimeParseException) {
             null
-        }
-    }
-
-    fun isolarUfEspecifica(ufSelecionada: String) {
-        if (ufSelecionada == "Todas") {
-            // Se escolheu "Todas", limpa o filtro e exibe tudo
-            _filtro.value = _filtro.value.copy(ufsOcultadas = emptySet())
-        } else {
-            // Pega todas as UFs que existem na busca atual, exceto a selecionada
-            val todasUfsExistentes = todasUfsDisponiveis.value
-            val novasOcultadas = todasUfsExistentes.filter { it != ufSelecionada }.toSet()
-
-            _filtro.value = _filtro.value.copy(ufsOcultadas = novasOcultadas)
         }
     }
 }
