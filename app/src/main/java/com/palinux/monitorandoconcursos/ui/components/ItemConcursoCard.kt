@@ -20,9 +20,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.palinux.monitorandoconcursos.domain.model.Concurso
+import com.palinux.monitorandoconcursos.ui.viewmodel.ConcursosViewModel
 
 @Composable
-fun ItemConcursoCard(concurso: Concurso) {
+fun ItemConcursoCard(concurso: Concurso, viewModel: ConcursosViewModel) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
@@ -42,7 +43,7 @@ fun ItemConcursoCard(concurso: Concurso) {
                     modifier = Modifier.weight(1f)
                 )
                 SuggestionChip(
-                    onClick = { },
+                    onClick = { viewModel.isolarUfEspecifica(concurso.regiao)},
                     label = { Text(concurso.regiao) }
                 )
             }

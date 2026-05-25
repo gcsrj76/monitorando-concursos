@@ -319,7 +319,7 @@ fun TelaVisualizadorConcursos(viewModel: ConcursosViewModel = viewModel()) {
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(listaConcursos) { concurso ->
-                        ItemConcursoCard(concurso = concurso)
+                        ItemConcursoCard(concurso = concurso, viewModel)
                     }
                 }
             }
