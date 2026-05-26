@@ -49,6 +49,9 @@ class ConcursoRepository {
                 // 5. Extração da Data de Inscrição
                 val dataInscricao = elemento.select("div.ce > span").text().replace("\n", " ").trim()
 
+                // 6. Extração do Link
+                val link = elemento.attr("data-url").trim()
+
                 if (instituicao.isNotEmpty()) {
                     listaConcursos.add(
                         Concurso(
@@ -59,7 +62,8 @@ class ConcursoRepository {
                             salarioMaximo = salario,
                             cargos = cargos,
                             escolaridade = escolaridade,
-                            dataInscricao = dataInscricao
+                            dataInscricao = dataInscricao,
+                            link = link
                         )
                     )
                 }

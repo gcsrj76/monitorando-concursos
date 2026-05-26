@@ -8,6 +8,7 @@ data class Concurso(
     val salarioMaximo: Double,
     val cargos: String,
     val escolaridade: String,
-    val dataInscricao: String
+    val dataInscricao: String,
+    val link: String
 )
 
